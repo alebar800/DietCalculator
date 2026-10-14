@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>AI Рацион, Календарь и Друзья</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; user-select: none; font-family: system-ui, -apple-system, sans-serif; }
+        input, textarea, .selectable-code { user-select: text !important; -webkit-user-select: text !important; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900">
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+
+    function toDateKey(dateObj) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    const TODAY_KEY = toDateKey(new Date());
+    const TOMORROW_DATE = new Date();
+    TOMORROW_DATE.setDate(TOMORROW_DATE.getDate() + 1);
+    const TOMORROW_KEY = toDateKey(TOMORROW_DATE);
+
+    const MONTH_NAMES = [
+      'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+      'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+    ];
+
+    // Справочник аллергенов и непереносимостей
+    const ALLERGENS = [
+      { id: 'lactose', label: '🥛 Лактоза / Молоко' },
+      { id: 'gluten', label: '🌾 Глютен / Пшеница' },
+      { id: 'nuts', label: '🥜 Орехи и арахис' },
+      { id: 'fish', label: '🐟 Рыба и морепродукты' },
+      { id: 'eggs', label: '🥚 Куриные яйца' },
+      { id: 'soy', label: '🫘 Соя' },
+      { id: 'citrus', label: '🍊 Цитрусовые' },
+      { id: 'okroshka', label: '🥣 Окрошка' }
+    ];
+
+    // Кардинально расширенная база блюд и продуктов (60 позиций)
+    const FOODS = [
+      // ЗАВТРАКИ И КАШИ
+      { id: 1, name: 'Овсяная каша на воде с ягодами', kcal: 110, p: 3.5, f: 1.8, c: 20.2, allergens: ['gluten'], cat: 'breakfast', tags: ['sweet', 'porridge'] },
+      { id: 2, name: 'Овсяные хлопья (сухие)', kcal: 352, p: 12.3, f: 6.1, c: 59.5, allergens: ['gluten'], cat: 'breakfast', tags: ['sweet', 'porridge'] },
+      { id: 3, name: 'Рисовая молочная каша', kcal: 125, p: 3.2, f: 3.1, c: 21.0, allergens: ['lactose'], cat: 'breakfast', tags: ['sweet', 'porridge'] },
+      { id: 4, name: 'Пшенная каша с тыквой', kcal: 115, p: 3.0, f: 2.2, c: 20.8, allergens: [], cat: 'breakfast', tags: ['sweet', 'porridge'] },
+      { id: 5, name: 'Яичница / Омлет из 3 яиц', kcal: 165, p: 12.5, f: 12.1, c: 1.1, allergens: ['eggs'], cat: 'breakfast', tags: ['savory', 'eggs'] },
+      { id: 6, name: 'Яйцо куриное отварное', kcal: 157, p: 12.7, f: 11.5, c: 0.7, allergens: ['eggs'], cat: 'breakfast', tags: ['savory', 'eggs'] },
+      { id: 7, name: 'Скрэмбл с тостом и авокадо', kcal: 195, p: 9.4, f: 11.8, c: 12.5, allergens: ['eggs', 'gluten'], cat: 'breakfast', tags: ['savory', 'eggs'] },
+      { id: 8, name: 'Сырники творожные запеченные', kcal: 185, p: 14.5, f: 6.2, c: 17.5, allergens: ['lactose', 'eggs', 'gluten'], cat: 'breakfast', tags: ['sweet', 'curd'] },
+      { id: 9, name: 'Творожная запеканка', kcal: 168, p: 15.2, f: 5.5, c: 14.2, allergens: ['lactose', 'eggs'], cat: 'breakfast', tags: ['sweet', 'curd'] },
+      { id: 10, name: 'Блинчики с курицей', kcal: 210, p: 11.4, f: 8.2, c: 22.5, allergens: ['gluten', 'eggs', 'lactose'], cat: 'breakfast', tags: ['savory'] },
+      { id: 11, name: 'Тост из цельнозернового хлеба с сыром', kcal: 265, p: 13.5, f: 11.0, c: 28.0, allergens: ['gluten', 'lactose'], cat: 'breakfast', tags: ['savory'] },
+      { id: 12, name: 'Гречневая каша с молоком', kcal: 130, p: 4.8, f: 3.2, c: 20.5, allergens: ['lactose'], cat: 'breakfast', tags: ['sweet', 'porridge'] },
+
+      // ГОРЯЧИЕ БЛЮДА ИЗ ПТИЦЫ
+      { id: 13, name: 'Куриная грудка (филе на гриле)', kcal: 113, p: 23.6, f: 1.9, c: 0.4, allergens: [], cat: 'main', tags: ['poultry', 'light'] },
+      { id: 14, name: 'Тушеная картошка с курицей', kcal: 118, p: 9.8, f: 4.2, c: 10.8, allergens: [], cat: 'combo', tags: ['poultry', 'potato', 'home'] },
+      { id: 15, name: 'Гуляш из курицы в сливочном соусе', kcal: 148, p: 16.5, f: 7.5, c: 3.4, allergens: ['lactose'], cat: 'main', tags: ['poultry', 'home'] },
+      { id: 16, name: 'Филе индейки запеченное с травами', kcal: 108, p: 22.0, f: 1.5, c: 0.5, allergens: [], cat: 'main', tags: ['poultry', 'light'] },
+      { id: 17, name: 'Котлеты куриные паровые', kcal: 135, p: 18.2, f: 5.4, c: 3.5, allergens: ['eggs'], cat: 'main', tags: ['poultry', 'home'] },
+      { id: 18, name: 'Куриное бедро без кожи (запеченное)', kcal: 155, p: 19.5, f: 8.4, c: 0.0, allergens: [], cat: 'main', tags: ['poultry'] },
+      { id: 19, name: 'Куриное филе в кисло-сладком соусе', kcal: 142, p: 17.0, f: 3.2, c: 11.2, allergens: ['soy'], cat: 'main', tags: ['poultry'] },
+      { id: 20, name: 'Индейка тушеная с овощами', kcal: 105, p: 15.8, f: 2.8, c: 4.2, allergens: [], cat: 'combo', tags: ['poultry', 'light'] },
+
+      // МЯСНЫЕ БЛЮДА
+      { id: 21, name: 'Говядина постная тушеная', kcal: 158, p: 22.2, f: 7.1, c: 0.0, allergens: [], cat: 'main', tags: ['meat', 'light'] },
+      { id: 22, name: 'Бефстроганов из говядины со сметаной', kcal: 178, p: 17.5, f: 10.2, c: 3.8, allergens: ['lactose'], cat: 'main', tags: ['meat', 'home'] },
+      { id: 23, name: 'Плов с говядиной', kcal: 185, p: 11.2, f: 7.8, c: 18.5, allergens: [], cat: 'combo', tags: ['meat', 'rice', 'home'] },
+      { id: 24, name: 'Стейк из говядины (рибай / стриплойн)', kcal: 215, p: 23.0, f: 13.5, c: 0.0, allergens: [], cat: 'main', tags: ['meat'] },
+      { id: 25, name: 'Котлеты говяжьи домашние', kcal: 192, p: 16.8, f: 11.5, c: 5.2, allergens: ['eggs', 'gluten'], cat: 'main', tags: ['meat', 'home'] },
+      { id: 26, name: 'Свиная вырезка нежирная запеченная', kcal: 148, p: 20.5, f: 7.0, c: 0.0, allergens: [], cat: 'main', tags: ['meat'] },
+      { id: 27, name: 'Макароны по-флотски с говядиной', kcal: 175, p: 10.8, f: 6.5, c: 18.4, allergens: ['gluten'], cat: 'combo', tags: ['meat', 'pasta', 'home'] },
+      { id: 28, name: 'Пельмени домашние с говядиной', kcal: 225, p: 11.8, f: 9.5, c: 23.0, allergens: ['gluten', 'eggs'], cat: 'combo', tags: ['meat', 'home'] },
+
+      // РЫБА И МОРЕПРОДУКТЫ
+      { id: 29, name: 'Лосось / Семга на пару или гриле', kcal: 208, p: 20.4, f: 13.4, c: 0.0, allergens: ['fish'], cat: 'main', tags: ['fish'] },
+      { id: 30, name: 'Треска запеченная с лимоном', kcal: 82, p: 17.8, f: 0.8, c: 0.5, allergens: ['fish', 'citrus'], cat: 'main', tags: ['fish', 'light'] },
+      { id: 31, name: 'Минтай в сметанном соусе', kcal: 102, p: 16.5, f: 3.4, c: 1.5, allergens: ['fish', 'lactose'], cat: 'main', tags: ['fish', 'light'] },
+      { id: 32, name: 'Тунец консервированный в собств. соку', kcal: 101, p: 23.0, f: 0.8, c: 0.0, allergens: ['fish'], cat: 'main', tags: ['fish', 'light'] },
+      { id: 33, name: 'Креветки обжаренные с чесноком', kcal: 112, p: 20.5, f: 3.1, c: 0.5, allergens: ['fish'], cat: 'main', tags: ['fish', 'light'] },
+      { id: 34, name: 'Горбуша запеченная', kcal: 142, p: 21.0, f: 6.2, c: 0.0, allergens: ['fish'], cat: 'main', tags: ['fish'] },
+
+      // СУПЫ
+      { id: 35, name: 'Куриный суп с лапшой', kcal: 62, p: 5.2, f: 2.1, c: 5.8, allergens: ['gluten'], cat: 'soup', tags: ['poultry', 'home'] },
+      { id: 36, name: 'Борщ с говядиной', kcal: 68, p: 4.5, f: 3.2, c: 5.4, allergens: [], cat: 'soup', tags: ['meat', 'home'] },
+      { id: 37, name: 'Тыквенный крем-суп', kcal: 74, p: 2.1, f: 3.8, c: 8.2, allergens: ['lactose'], cat: 'soup', tags: ['light'] },
+      { id: 38, name: 'Чечевичный суп сытный', kcal: 88, p: 6.4, f: 2.0, c: 11.5, allergens: [], cat: 'soup', tags: ['light'] },
+      { id: 39, name: 'Окрошка классическая', kcal: 76, p: 4.2, f: 3.5, c: 6.8, allergens: ['okroshka', 'eggs', 'lactose'], cat: 'soup', tags: [] },
+
+      // ГАРНИРЫ
+      { id: 40, name: 'Гречка отварная', kcal: 110, p: 4.2, f: 1.1, c: 21.3, allergens: [], cat: 'side', tags: ['buckwheat'] },
+      { id: 41, name: 'Гречка (в сухом весе)', kcal: 313, p: 12.6, f: 3.3, c: 62.1, allergens: [], cat: 'side', tags: ['buckwheat'] },
+      { id: 42, name: 'Рис белый отварной', kcal: 116, p: 2.2, f: 0.3, c: 25.8, allergens: [], cat: 'side', tags: ['rice'] },
+      { id: 43, name: 'Рис белый (в сухом весе)', kcal: 344, p: 6.7, f: 0.7, c: 78.9, allergens: [], cat: 'side', tags: ['rice'] },
+      { id: 44, name: 'Картофель отварной / запеченный', kcal: 82, p: 2.0, f: 0.4, c: 16.7, allergens: [], cat: 'side', tags: ['potato'] },
+      { id: 45, name: 'Картофельное пюре с молоком', kcal: 106, p: 2.5, f: 3.8, c: 15.4, allergens: ['lactose'], cat: 'side', tags: ['potato'] },
+      { id: 46, name: 'Макароны из тв. сортов (отварные)', kcal: 118, p: 4.0, f: 0.6, c: 24.2, allergens: ['gluten'], cat: 'side', tags: ['pasta'] },
+      { id: 47, name: 'Булгур отварной', kcal: 115, p: 4.1, f: 0.8, c: 23.0, allergens: ['gluten'], cat: 'side', tags: ['pasta'] },
+      { id: 48, name: 'Овощи на гриле / тушеные', kcal: 55, p: 1.8, f: 2.2, c: 7.4, allergens: [], cat: 'side', tags: ['veggies', 'light'] },
+      { id: 49, name: 'Салат из свежих огурцов и томатов с маслом', kcal: 64, p: 1.1, f: 4.5, c: 4.8, allergens: [], cat: 'side', tags: ['veggies', 'light'] },
+
+      // ПЕРЕКУСЫ, МОЛОЧНЫЕ И ОРЕХИ
+      { id: 50, name: 'Творог 5%', kcal: 121, p: 17.2, f: 5.0, c: 1.8, allergens: ['lactose'], cat: 'snack', tags: ['curd'] },
+      { id: 51, name: 'Йогурт греческий натуральный', kcal: 97, p: 9.0, f: 5.0, c: 3.6, allergens: ['lactose'], cat: 'snack', tags: ['curd'] },
+      { id: 52, name: 'Протеиновый пудинг / коктейль (безлакт.)', kcal: 85, p: 15.0, f: 1.5, c: 3.0, allergens: [], cat: 'snack', tags: ['light'] },
+      { id: 53, name: 'Банан свежий', kcal: 96, p: 1.5, f: 0.5, c: 21.0, allergens: [], cat: 'snack', tags: ['fruit'] },
+      { id: 54, name: 'Яблоко зеленое / красное', kcal: 47, p: 0.4, f: 0.4, c: 9.8, allergens: [], cat: 'snack', tags: ['fruit'] },
+      { id: 55, name: 'Апельсин / Мандарины', kcal: 43, p: 0.9, f: 0.2, c: 8.4, allergens: ['citrus'], cat: 'snack', tags: ['fruit'] },
+      { id: 56, name: 'Миндаль / Смесь орехов', kcal: 609, p: 18.6, f: 53.7, c: 13.0, allergens: ['nuts'], cat: 'snack', tags: ['nuts'] },
+      { id: 57, name: 'Сыр твердый (Гауда / Российский)', kcal: 356, p: 24.9, f: 27.4, c: 0.0, allergens: ['lactose'], cat: 'snack', tags: ['cheese'] },
+      { id: 58, name: 'Авокадо свежее', kcal: 160, p: 2.0, f: 14.7, c: 1.8, allergens: [], cat: 'snack', tags: ['veggies'] },
+      { id: 59, name: 'Хлебцы цельнозерновые рисовые', kcal: 310, p: 7.5, f: 2.2, c: 66.0, allergens: [], cat: 'snack', tags: ['light'] },
+      { id: 60, name: 'Темный шоколад 75%', kcal: 545, p: 8.5, f: 38.0, c: 42.0, allergens: [], cat: 'snack', tags: ['sweet'] }
+    ];
+
+    const MEALS = [
+      { id: 'breakfast', title: 'Завтрак', icon: '🌅' },
+      { id: 'lunch', title: 'Обед', icon: '🍲' },
+      { id: 'dinner', title: 'Ужин', icon: '🥗' },
+      { id: 'snack', title: 'Перекус', icon: '🍎' }
+    ];
+
+    // Проверка, подходит ли продукт с учетом аллергенов пользователя
+    function isSafeFood(food, userAllergens = []) {
+      if (!food || !food.allergens) return true;
+      return !food.allergens.some(a => userAllergens.includes(a));
+    }
+
+    // Умный локальный ИИ-генератор с учетом аллергенов и пожеланий вечернего теста
+    function generateSmartDiet(targetKcal, userAllergens = [], quizPrefs = null, variantIndex = 0) {
+      const round5 = (val) => Math.max(15, Math.round(val / 5) * 5);
+      const safeFoods = FOODS.filter(f => isSafeFood(f, userAllergens));
+
+      const pickFood = (filterFn, fallbackIds) => {
+        const matches = safeFoods.filter(filterFn);
+        if (matches.length > 0) {
+          return matches[variantIndex % matches.length];
+        }
+        for (let id of fallbackIds) {
+          const f = safeFoods.find(item => item.id === id);
+          if (f) return f;
+        }
+        return safeFoods[0] || FOODS[0];
+      };
+
+      // 1. Завтрак (28% ккал)
+      const wantSweetBreakfast = quizPrefs ? quizPrefs.breakfast === 'sweet' : (variantIndex % 2 === 0);
+      const bfMain = pickFood(
+        f => f.cat === 'breakfast' && f.tags.includes(wantSweetBreakfast ? 'sweet' : 'savory'),
+        [1, 4, 5, 13]
+      );
+      const bfExtra = pickFood(f => f.cat === 'snack' && f.tags.includes('fruit'), [53, 54]);
+
+      // 2. Обед (37% ккал)
+      const lunchProteinTag = quizPrefs?.lunchProtein || (['poultry', 'meat', 'fish'][variantIndex % 3]);
+      const lunchSideTag = quizPrefs?.lunchSide || (['potato', 'buckwheat', 'rice', 'pasta'][variantIndex % 4]);
+
+      // Если выбрана тушеная картошка с курицей или плов
+      let lunchItems = [];
+      if (lunchProteinTag === 'poultry' && lunchSideTag === 'potato' && isSafeFood(FOODS.find(f => f.id === 14), userAllergens)) {
+        const stew = FOODS.find(f => f.id === 14);
+        const salad = pickFood(f => f.id === 49, [48, 49]);
+        lunchItems = [
+          { meal: 'lunch', food: stew, share: 0.31 },
+          { meal: 'lunch', food: salad, share: 0.06 }
+        ];
+      } else {
+        const lProt = pickFood(f => f.cat === 'main' && f.tags.includes(lunchProteinTag), [13, 15, 21, 16]);
+        const lSide = pickFood(f => f.cat === 'side' && f.tags.includes(lunchSideTag), [40, 42, 44]);
+        lunchItems = [
+          { meal: 'lunch', food: lProt, share: 0.19 },
+          { meal: 'lunch', food: lSide, share: 0.18 }
+        ];
+      }
+
+      // 3. Ужин (25% ккал)
+      const dinnerStyle = quizPrefs?.dinner || (variantIndex % 2 === 0 ? 'light' : 'home');
+      const dProt = pickFood(
+        f => (f.cat === 'main' || f.cat === 'combo') && f.tags.includes(dinnerStyle) && f.id !== lunchItems[0]?.food?.id,
+        [16, 20, 14, 21]
+      );
+      const dSide = pickFood(f => f.cat === 'side' && (dinnerStyle === 'light' ? f.tags.includes('veggies') : true), [48, 44, 40]);
+
+      // 4. Перекус (10% ккал)
+      const snackMain = pickFood(f => f.cat === 'snack' && (f.tags.includes('curd') || f.tags.includes('light')), [50, 51, 52, 59]);
+      const snackNuts = pickFood(f => f.cat === 'snack' && (f.tags.includes('nuts') || f.tags.includes('fruit')), [56, 53, 54]);
+
+      const rawPlan = [
+        { meal: 'breakfast', food: bfMain, share: 0.21 },
+        { meal: 'breakfast', food: bfExtra, share: 0.07 },
+        ...lunchItems,
+        { meal: 'dinner', food: dProt, share: 0.16 },
+        { meal: 'dinner', food: dSide, share: 0.09 },
+        { meal: 'snack', food: snackMain, share: 0.06 },
+        { meal: 'snack', food: snackNuts, share: 0.04 }
+      ];
+
+      const generatedLog = rawPlan.map((item, idx) => {
+        const desiredKcal = targetKcal * item.share;
+        const grams = round5((desiredKcal / item.food.kcal) * 100);
+        return {
+          id: Date.now() + idx,
+          meal: item.meal,
+          foodId: item.food.id,
+          grams
+        };
+      });
+
+      const allergenNote = userAllergens.length > 0
+        ? ` (учтены исключения: ${userAllergens.length} аллерг.)`
+        : '';
+
+      const note = quizPrefs
+        ? `Персональное меню по твоим вечерним пожеланиям составлено${allergenNote}!`
+        : `Сбалансированный рацион из доступных блюд подобран${allergenNote}.`;
+
+      return { log: generatedLog, note };
+    }
+
+    function evaluateDayStatus(doneCount, missedCount, completedKcal, targetKcal, manualOverride) {
+      if (manualOverride) return manualOverride;
+      const ratio = targetKcal > 0 ? completedKcal / targetKcal : 0;
+      if (doneCount === 4 || (ratio >= 0.85 && doneCount >= 3 && missedCount === 0)) return 'green';
+      if (doneCount >= 1 || ratio >= 0.25) return 'yellow';
+      if (missedCount >= 1 && doneCount === 0) return 'red';
+      return 'none';
+    }
+
+    function App() {
+      const [onboarded, setOnboarded] = useState(() => localStorage.getItem('onboarded_v3') === 'true');
+      const [tab, setTab] = useState('diary'); // 'diary' | 'calendar' | 'friends' | 'settings'
+
+      // Профиль и аллергены
+      const [userName, setUserName] = useState(() => localStorage.getItem('user_name') || 'Алексей');
+      const [gender, setGender] = useState(() => localStorage.getItem('gender') || 'male');
+      const [age, setAge] = useState(() => Number(localStorage.getItem('age')) || 19);
+      const [weight, setWeight] = useState(() => Number(localStorage.getItem('weight')) || 75);
+      const [height, setHeight] = useState(() => Number(localStorage.getItem('height')) || 180);
+      const [activity, setActivity] = useState(() => Number(localStorage.getItem('activity')) || 1.375);
+      const [goal, setGoal] = useState(() => Number(localStorage.getItem('goal')) || 0);
+      const [ratios, setRatios] = useState(() => {
+        const saved = localStorage.getItem('ratios');
+        return saved ? JSON.parse(saved) : { p: 25, f: 25, c: 50 };
+      });
+      const [allergens, setAllergens] = useState(() => {
+        const saved = localStorage.getItem('user_allergens');
+        return saved ? JSON.parse(saved) : ['okroshka'];
+      });
+
+      const [aiVariant, setAiVariant] = useState(0);
+      const [aiNote, setAiNote] = useState(() => localStorage.getItem('ai_note') || 'Локальный ИИ подобрал рацион с учетом твоих предпочтений и аллергенов.');
+
+      // Дневник питания текущего дня
+      const [log, setLog] = useState(() => {
+        const saved = localStorage.getItem('diet_log_v3');
+        return saved ? JSON.parse(saved) : [];
+      });
+
+      const [mealStatus, setMealStatus] = useState(() => {
+        const saved = localStorage.getItem('meal_status_v3');
+        return saved ? JSON.parse(saved) : { breakfast: 'pending', lunch: 'pending', dinner: 'pending', snack: 'pending' };
+      });
+
+      // КАЛЕНДАРЬ ИСТОРИИ (хранит рацион, статусы и комментарии к каждому дню)
+      const [calendarData, setCalendarData] = useState(() => {
+        const saved = localStorage.getItem('diet_calendar_v3');
+        if (saved) return JSON.parse(saved);
+        const d1 = new Date(); d1.setDate(d1.getDate() - 1);
+        const d2 = new Date(); d2.setDate(d2.getDate() - 2);
+        return {
+          [toDateKey(d2)]: {
+            status: 'yellow', eatenKcal: 1750, targetKcal: 2500, doneMeals: 2, missedMeals: 1, weight: 75.2,
+            items: [{ meal: 'breakfast', name: 'Овсяная каша', grams: 250, kcal: 275 }, { meal: 'lunch', name: 'Тушеная картошка с курицей', grams: 400, kcal: 472 }],
+            comments: [{ author: 'Лиза', text: 'Ничего, завтра закроешь все 4 приема!', time: '21:15' }]
+          },
+          [toDateKey(d1)]: {
+            status: 'green', eatenKcal: 2520, targetKcal: 2500, doneMeals: 4, missedMeals: 0, weight: 75.0,
+            items: [{ meal: 'breakfast', name: 'Омлет из 3 яиц', grams: 220, kcal: 363 }, { meal: 'lunch', name: 'Гуляш из курицы в сливочном соусе', grams: 350, kcal: 518 }],
+            comments: [{ author: 'Лиза', text: 'Красавчик, отличный режим! 🔥', time: '22:05' }]
+          }
+        };
+      });
+
+      const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+      const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+      const [selectedDateKey, setSelectedDateKey] = useState(TODAY_KEY);
+      const [myDayCommentText, setMyDayCommentText] = useState('');
+
+      // Список друзей с подробной историей по дням и комментариями
+      const [friends, setFriends] = useState(() => {
+        const saved = localStorage.getItem('diet_friends_v3');
+        if (saved) return JSON.parse(saved);
+        const yest = new Date(); yest.setDate(yest.getDate() - 1);
+        const yestKey = toDateKey(yest);
+        return [
+          {
+            id: 1,
+            name: 'Лиза',
+            weight: 56,
+            targetKcal: 1850,
+            eatenKcal: 1790,
+            meals: { breakfast: 'done', lunch: 'done', dinner: 'done', snack: 'pending' },
+            calSummary: { green: 6, yellow: 2, red: 0 },
+            updatedAt: 'Сегодня',
+            daysHistory: {
+              [TODAY_KEY]: {
+                status: 'green',
+                eatenKcal: 1790,
+                targetKcal: 1850,
+                meals: { breakfast: 'done', lunch: 'done', dinner: 'done', snack: 'pending' },
+                items: [
+                  { meal: 'breakfast', name: 'Сырники творожные запеченные', grams: 180, kcal: 333 },
+                  { meal: 'lunch', name: 'Индейка запеченная + Булгур', grams: 320, kcal: 560 },
+                  { meal: 'dinner', name: 'Лосось на пару + Овощи', grams: 280, kcal: 480 },
+                  { meal: 'snack', name: 'Йогурт греческий + Банан', grams: 220, kcal: 210 }
+                ],
+                comments: [
+                  { author: 'Лиза', text: 'Сырники утром получились топ!', time: '10:30' }
+                ]
+              },
+              [yestKey]: {
+                status: 'yellow',
+                eatenKcal: 1420,
+                targetKcal: 1850,
+                meals: { breakfast: 'done', lunch: 'done', dinner: 'missed', snack: 'done' },
+                items: [
+                  { meal: 'breakfast', name: 'Овсяная каша с ягодами', grams: 250, kcal: 275 },
+                  { meal: 'lunch', name: 'Куриный суп с лапшой', grams: 350, kcal: 217 },
+                  { meal: 'snack', name: 'Творог 5% + Яблоко', grams: 200, kcal: 190 }
+                ],
+                comments: []
+              }
+            }
+          }
+        ];
+      });
+
+      // Подробный просмотр друга (модальное окно)
+      const [activeFriendId, setActiveFriendId] = useState(null);
+      const [friendSelectedDate, setFriendSelectedDate] = useState(TODAY_KEY);
+      const [friendCommentInput, setFriendCommentInput] = useState('');
+      const [confirmDeleteFriendId, setConfirmDeleteFriendId] = useState(null);
+
+      const [friendCodeInput, setFriendCodeInput] = useState('');
+      const [copyFeedback, setCopyFeedback] = useState('');
+
+      // Ручное добавление продукта + фильтр поиска
+      const [selectedMeal, setSelectedMeal] = useState('breakfast');
+      const [selectedFood, setSelectedFood] = useState(14);
+      const [grams, setGrams] = useState(200);
+      const [foodSearch, setFoodSearch] = useState('');
+      const [showAddModal, setShowAddModal] = useState(false);
+
+      // ВЕЧЕРНИЙ ТЕСТ В 21:50 И УВЕДОМЛЕНИЕ
+      const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem('notif_2150') !== 'false');
+      const [showEveningQuiz, setShowEveningQuiz] = useState(false);
+      const [eveningBanner, setEveningBanner] = useState(false);
+      const [quizAnswers, setQuizAnswers] = useState({
+        breakfast: 'savory',
+        lunchProtein: 'poultry',
+        lunchSide: 'potato',
+        dinner: 'home'
+      });
+
+      // Проверка времени 21:50 по местному времени каждые 25 секунд
+      useEffect(() => {
+        const checkTime = () => {
+          if (!notifEnabled || !onboarded) return;
+          const now = new Date();
+          const h = now.getHours();
+          const m = now.getMinutes();
+          const lastShownDate = localStorage.getItem('quiz_shown_date');
+
+          // Срабатывает в 21:50 (и в интервале 21:50–23:59, если открыли приложение вечером)
+          if ((h === 21 && m >= 50) || h === 22 || h === 23) {
+            if (lastShownDate !== TODAY_KEY) {
+              setEveningBanner(true);
+              if (h === 21 && m === 50) {
+                setShowEveningQuiz(true);
+                localStorage.setItem('quiz_shown_date', TODAY_KEY);
+                if ('Notification' in window && Notification.permission === 'granted') {
+                  new Notification('🌙 Время спланировать рацион на завтра (21:50)!', {
+                    body: 'Пройди быстрый тест из 4 вопросов, чем бы ты хотел завтра попитаться!'
+                  });
+                }
+              }
+            }
+          }
+        };
+
+        checkTime();
+        const timer = setInterval(checkTime, 25000);
+        return () => clearInterval(timer);
+      }, [notifEnabled, onboarded]);
+
+      // Расчет целевых калорий и БЖУ
+      const targets = useMemo(() => {
+        const bmr = gender === 'male'
+          ? 10 * weight + 6.25 * height - 5 * age + 5
+          : 10 * weight + 6.25 * height - 5 * age - 161;
+        const tdee = bmr * activity;
+        const targetKcal = Math.max(1200, Math.round(tdee * (1 + goal)));
+
+        return {
+          bmr: Math.round(bmr),
+          tdee: Math.round(tdee),
+          kcal: targetKcal,
+          p: Math.round((targetKcal * (ratios.p / 100)) / 4),
+          f: Math.round((targetKcal * (ratios.f / 100)) / 9),
+          c: Math.round((targetKcal * (ratios.c / 100)) / 4)
+        };
+      }, [gender, age, weight, height, activity, goal, ratios]);
+
+      // Доступные безопасные блюда (без аллергенов пользователя)
+      const safeFoodsList = useMemo(() => {
+        return FOODS.filter(f => isSafeFood(f, allergens));
+      }, [allergens]);
+
+      // Статистика за сегодня
+      const stats = useMemo(() => {
+        let planned = { kcal: 0, p: 0, f: 0, c: 0 };
+        let completed = { kcal: 0, p: 0, f: 0, c: 0 };
+
+        log.forEach(item => {
+          const food = FOODS.find(f => f.id === Number(item.foodId));
+          if (!food) return;
+          const k = item.grams / 100;
+          planned.kcal += food.kcal * k;
+          planned.p += food.p * k;
+          planned.f += food.f * k;
+          planned.c += food.c * k;
+
+          if (mealStatus[item.meal] === 'done') {
+            completed.kcal += food.kcal * k;
+            completed.p += food.p * k;
+            completed.f += food.f * k;
+            completed.c += food.c * k;
+          }
+        });
+
+        const doneMealsCount = Object.values(mealStatus).filter(s => s === 'done').length;
+        const missedMealsCount = Object.values(mealStatus).filter(s => s === 'missed').length;
+        const manualToday = calendarData[TODAY_KEY]?.manualStatus || null;
+        const todayColor = evaluateDayStatus(doneMealsCount, missedMealsCount, completed.kcal, targets.kcal, manualToday);
+
+        return { planned, completed, doneMealsCount, missedMealsCount, todayColor };
+      }, [log, mealStatus, targets.kcal, calendarData]);
+
+      // Запись сегодняшнего дня и списка блюд в Календарь
+      useEffect(() => {
+        if (!onboarded) return;
+        const compactItems = log.map(item => {
+          const f = FOODS.find(food => food.id === Number(item.foodId));
+          return {
+            meal: item.meal,
+            name: f ? f.name : 'Блюдо',
+            grams: item.grams,
+            kcal: f ? Math.round((f.kcal * item.grams) / 100) : 0
+          };
+        });
+
+        setCalendarData(prev => {
+          const existing = prev[TODAY_KEY] || {};
+          const autoStatus = evaluateDayStatus(
+            stats.doneMealsCount,
+            stats.missedMealsCount,
+            Math.round(stats.completed.kcal),
+            targets.kcal,
+            existing.manualStatus
+          );
+          return {
+            ...prev,
+            [TODAY_KEY]: {
+              ...existing,
+              status: autoStatus,
+              eatenKcal: Math.round(stats.completed.kcal),
+              plannedKcal: Math.round(stats.planned.kcal),
+              targetKcal: targets.kcal,
+              doneMeals: stats.doneMealsCount,
+              missedMeals: stats.missedMealsCount,
+               meals: mealStatus,
+              items: compactItems,
+              comments: existing.comments || [],
+              weight: weight
+            }
+          };
+        });
+      }, [stats.doneMealsCount, stats.missedMealsCount, stats.completed.kcal, stats.planned.kcal, targets.kcal, weight, log, mealStatus, onboarded]);
+
+      // Автосохранение в память телефона
+      useEffect(() => {
+        localStorage.setItem('onboarded_v3', onboarded);
+        localStorage.setItem('user_name', userName);
+        localStorage.setItem('gender', gender);
+        localStorage.setItem('age', age);
+        localStorage.setItem('weight', weight);
+        localStorage.setItem('height', height);
+        localStorage.setItem('activity', activity);
+        localStorage.setItem('goal', goal);
+        localStorage.setItem('ratios', JSON.stringify(ratios));
+        localStorage.setItem('user_allergens', JSON.stringify(allergens));
+        localStorage.setItem('diet_log_v3', JSON.stringify(log));
+        localStorage.setItem('meal_status_v3', JSON.stringify(mealStatus));
+        localStorage.setItem('ai_note', aiNote);
+        localStorage.setItem('diet_friends_v3', JSON.stringify(friends));
+        localStorage.setItem('diet_calendar_v3', JSON.stringify(calendarData));
+        localStorage.setItem('notif_2150', notifEnabled);
+      }, [onboarded, userName, gender, age, weight, height, activity, goal, ratios, allergens, log, mealStatus, aiNote, friends, calendarData, notifEnabled]);
+
+      const calendarTotals = useMemo(() => {
+        let green = 0, yellow = 0, red = 0;
+        Object.values(calendarData).forEach(d => {
+          if (d.status === 'green') green++;
+          else if (d.status === 'yellow') yellow++;
+          else if (d.status === 'red') red++;
+        });
+        return { green, yellow, red };
+      }, [calendarData]);
+
+      const toggleAllergen = (id) => {
+        setAllergens(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+      };
+
+      const handleGenerateAI = (customVariant = aiVariant, prefs = null) => {
+        const res = generateSmartDiet(targets.kcal, allergens, prefs, customVariant);
+        setLog(res.log);
+        setAiNote(res.note);
+        setAiVariant(customVariant + 1);
+        setMealStatus({ breakfast: 'pending', lunch: 'pending', dinner: 'pending', snack: 'pending' });
+      };
+
+      const applyEveningQuiz = () => {
+        handleGenerateAI(aiVariant + 1, quizAnswers);
+        localStorage.setItem('quiz_shown_date', TODAY_KEY);
+        setShowEveningQuiz(false);
+        setEveningBanner(false);
+        setTab('diary');
+      };
+
+      const completeOnboarding = () => {
+        const res = generateSmartDiet(targets.kcal, allergens, null, 0);
+        setLog(res.log);
+        setAiNote(res.note);
+        setAiVariant(1);
+        setOnboarded(true);
+        setTab('diary');
+      };
+
+      const toggleMealStatus = (mealId, newStatus) => {
+        setCalendarData(prev => ({
+          ...prev,
+          [TODAY_KEY]: { ...(prev[TODAY_KEY] || {}), manualStatus: null }
+        }));
+        setMealStatus(prev => ({
+          ...prev,
+          [mealId]: prev[mealId] === newStatus ? 'pending' : newStatus
+        }));
+      };
+
+      const setDayManualColor = (dateKey, color) => {
+        setCalendarData(prev => {
+          const cur = prev[dateKey] || {
+            eatenKcal: color === 'green' ? targets.kcal : color === 'yellow' ? Math.round(targets.kcal * 0.6) : 0,
+            targetKcal: targets.kcal,
+            doneMeals: color === 'green' ? 4 : color === 'yellow' ? 2 : 0,
+            missedMeals: color === 'red' ? 4 : 0,
+            items: [],
+            comments: [],
+            weight: weight
+          };
+          const nextManual = cur.manualStatus === color ? null : color;
+          return {
+            ...prev,
+            [dateKey]: {
+              ...cur,
+              manualStatus: nextManual,
+              status: nextManual || 'none'
+            }
+          };
+        });
+      };
+
+      // Добавление комментария к своему дню в календаре
+      const addCommentToMyDay = (dateKey) => {
+        if (!myDayCommentText.trim()) return;
+        const newComment = {
+          author: userName,
+          text: myDayCommentText.trim(),
+          time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        };
+        setCalendarData(prev => {
+          const cur = prev[dateKey] || { status: 'none', eatenKcal: 0, targetKcal: targets.kcal, items: [], comments: [] };
+          return {
+            ...prev,
+            [dateKey]: {
+              ...cur,
+              comments: [...(cur.comments || []), newComment]
+            }
+          };
+        });
+        setMyDayCommentText('');
+      };
+
+      // Добавление комментария к дню друга
+      const addCommentToFriendDay = (friendId, dateKey) => {
+        if (!friendCommentInput.trim()) return;
+        const newComment = {
+          author: userName,
+          text: friendCommentInput.trim(),
+          time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        };
+        setFriends(prev => prev.map(f => {
+          if (f.id !== friendId) return f;
+          const history = { ...(f.daysHistory || {}) };
+          const dayObj = history[dateKey] || {
+            status: 'none',
+            eatenKcal: f.eatenKcal,
+            targetKcal: f.targetKcal,
+            meals: f.meals,
+            items: [],
+            comments: []
+          };
+          history[dateKey] = {
+            ...dayObj,
+            comments: [...(dayObj.comments || []), newComment]
+          };
+          return { ...f, daysHistory: history };
+        }));
+        setFriendCommentInput('');
+      };
+
+      // Код синхронизации (включает последние 5 дней истории с блюдами и комментариями)
+      const myShareCode = useMemo(() => {
+        const recentKeys = Object.keys(calendarData).sort().slice(-5);
+        const recentHistory = {};
+        recentKeys.forEach(k => {
+          recentHistory[k] = calendarData[k];
+        });
+
+        const payload = {
+          n: userName,
+          w: weight,
+          tk: targets.kcal,
+          ek: Math.round(stats.completed.kcal || stats.planned.kcal),
+          m: mealStatus,
+          cs: calendarTotals,
+          dh: recentHistory
+        };
+        try {
+          return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+        } catch (e) {
+          return '';
+        }
+      }, [userName, weight, targets.kcal, stats, mealStatus, calendarTotals, calendarData]);
+
+      // Надежное копирование для Android WebView
+      const copyToClipboardAndroid = (textToCopy, successMsg) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        textArea.style.position = "fixed";
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+          const ok = document.execCommand('copy');
+          setCopyFeedback(ok ? successMsg : 'Выделите моноширинный код ниже вручную');
+        } catch (err) {
+          setCopyFeedback('Выделите моноширинный код ниже вручную');
+        }
+
+        document.body.removeChild(textArea);
+        setTimeout(() => setCopyFeedback(''), 3500);
+      };
+
+      const copyFullShareReport = () => {
+        const mealIcons = MEALS.map(m => {
+          const st = mealStatus[m.id];
+          const badge = st === 'done' ? '✅' : st === 'missed' ? '❌' : '⏳';
+          return `${m.icon} ${m.title}: ${badge}`;
+        }).join('\n');
+
+        const text = `📊 Отчет питания — ${userName}\n⚖️ Вес: ${weight} кг\n🔥 Калории: ${Math.round(stats.completed.kcal)} / ${targets.kcal} ккал\n📅 Календарь: 🟢${calendarTotals.green} 🟡${calendarTotals.yellow} 🔴${calendarTotals.red}\n\n${mealIcons}\n\n🔗 Код дружбы:\n${myShareCode}`;
+        copyToClipboardAndroid(text, '✅ Полный отчет и код скопированы!');
+      };
+
+      const addFriendByCode = () => {
+        if (!friendCodeInput.trim()) return;
+        try {
+          const lines = friendCodeInput.trim().split('\n');
+          const cleanCode = lines[lines.length - 1].trim();
+          const decoded = JSON.parse(decodeURIComponent(escape(atob(cleanCode))));
+          if (!decoded.n || !decoded.tk) throw new Error('Invalid');
+
+          const newFriend = {
+            id: Date.now(),
+            name: decoded.n,
+            weight: decoded.w,
+            targetKcal: decoded.tk,
+            eatenKcal: decoded.ek,
+            meals: decoded.m || { breakfast: 'pending', lunch: 'pending', dinner: 'pending', snack: 'pending' },
+            calSummary: decoded.cs || { green: 1, yellow: 0, red: 0 },
+            daysHistory: decoded.dh || {
+              [TODAY_KEY]: {
+                status: 'yellow',
+                eatenKcal: decoded.ek,
+                targetKcal: decoded.tk,
+                meals: decoded.m,
+                items: [],
+                comments: []
+              }
+            },
+            updatedAt: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+          };
+
+          setFriends(prev => {
+            const exists = prev.findIndex(f => f.name.toLowerCase() === newFriend.name.toLowerCase());
+            if (exists >= 0) {
+              const copy = [...prev];
+              // Сохраняем старые комментарии, добавляя свежие данные
+              const mergedHistory = { ...(copy[exists].daysHistory || {}), ...(newFriend.daysHistory || {}) };
+              copy[exists] = { ...newFriend, id: copy[exists].id, daysHistory: mergedHistory };
+              return copy;
+            }
+            return [newFriend, ...prev];
+          });
+          setFriendCodeInput('');
+        } catch (err) {
+          alert('Не удалось распознать код друга. Вставьте моноширинный код или сообщение целиком.');
+        }
+      };
+
+      const addFoodToLog = () => {
+        if (grams <= 0) return;
+        setLog([...log, { id: Date.now(), meal: selectedMeal, foodId: Number(selectedFood), grams: Number(grams) }]);
+        setShowAddModal(false);
+      };
+
+      const removeItem = (id) => setLog(log.filter(item => item.id !== id));
+
+      const calendarGrid = useMemo(() => {
+        const firstDay = new Date(calYear, calMonth, 1);
+        const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+        const startOffset = (firstDay.getDay() + 6) % 7;
+        const cells = [];
+        for (let i = 0; i < startOffset; i++) cells.push(null);
+        for (let d = 1; d <= daysInMonth; d++) {
+          const key = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          cells.push({ day: d, key, data: calendarData[key] || null });
+        }
+        return cells;
+      }, [calYear, calMonth, calendarData]);
+
+      const changeMonth = (delta) => {
+        let nextM = calMonth + delta;
+        let nextY = calYear;
+        if (nextM > 11) { nextM = 0; nextY++; }
+        if (nextM < 0) { nextM = 11; nextY--; }
+        setCalMonth(nextM);
+        setCalYear(nextY);
+      };
+
+      // ================= ЭКРАН 1: ВСТУПИТЕЛЬНАЯ АНКЕТА + ОПРОС НА АЛЛЕРГЕНЫ =================
+      if (!onboarded) {
+        return (
+          <div className="max-w-md mx-auto min-h-screen bg-gradient-to-b from-indigo-700 via-indigo-600 to-slate-900 text-white p-5 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="inline-block bg-white/15 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold">
+                ✨ AI-ДИЕТОЛОГ • 60 БЛЮД • КОНТРОЛЬ АЛЛЕРГЕНОВ
+              </div>
+              <h1 className="text-2xl font-extrabold leading-tight">
+                Настроим твой профиль и исключения в еде
+              </h1>
+
+              <div className="bg-white text-slate-900 p-4 rounded-3xl shadow-xl space-y-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Твое имя (для друзей)</label>
+                  <input
+                    type="text"
+                    value={userName}
+                    onChange={e => setUserName(e.target.value)}
+                    className="w-full mt-1 p-2.5 bg-slate-100 rounded-xl font-bold text-slate-800 outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setGender('male')} className={`py-2 rounded-xl font-semibold text-xs ${gender === 'male' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>👨 Мужчина</button>
+                  <button onClick={() => setGender('female')} className={`py-2 rounded-xl font-semibold text-xs ${gender === 'female' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>👩 Женщина</button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] text-slate-500 font-medium">Возраст</label>
+                    <input type="number" value={age} onChange={e => setAge(Number(e.target.value))} className="w-full mt-0.5 p-2 bg-slate-100 rounded-xl font-bold text-center text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-500 font-medium">Вес (кг)</label>
+                    <input type="number" value={weight} onChange={e => setWeight(Number(e.target.value))} className="w-full mt-0.5 p-2 bg-slate-100 rounded-xl font-bold text-center text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-500 font-medium">Рост (см)</label>
+                    <input type="number" value={height} onChange={e => setHeight(Number(e.target.value))} className="w-full mt-0.5 p-2 bg-slate-100 rounded-xl font-bold text-center text-sm" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-500 font-medium">Активность и Цель</label>
+                  <select value={activity} onChange={e => setActivity(Number(e.target.value))} className="w-full mt-1 p-2.5 bg-slate-100 rounded-xl text-xs font-semibold mb-2">
+                    <option value={1.2}>Сидячий образ жизни (1.2)</option>
+                    <option value={1.375}>Тренировки 1–3 раза в неделю (1.375)</option>
+                    <option value={1.55}>Средняя активность 3–5 раз (1.55)</option>
+                    <option value={1.725}>Высокие нагрузки 6–7 раз (1.725)</option>
+                  </select>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button onClick={() => { setGoal(-0.15); setRatios({ p: 35, f: 25, c: 40 }); }} className={`py-2 rounded-xl text-xs font-bold ${goal === -0.15 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>📉 Сушка</button>
+                    <button onClick={() => { setGoal(0); setRatios({ p: 25, f: 25, c: 50 }); }} className={`py-2 rounded-xl text-xs font-bold ${goal === 0 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>⚖️ Баланс</button>
+                    <button onClick={() => { setGoal(0.15); setRatios({ p: 25, f: 20, c: 55 }); }} className={`py-2 rounded-xl text-xs font-bold ${goal === 0.15 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>💪 Масса</button>
+                  </div>
+                </div>
+
+                {/* Опрос на аллергены и непереносимость */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                    🚫 Отметь аллергены и непереносимость (ИИ исключит их):
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {ALLERGENS.map(al => {
+                      const active = allergens.includes(al.id);
+                      return (
+                        <button
+                          key={al.id}
+                          onClick={() => toggleAllergen(al.id)}
+                          className={`p-2 rounded-xl text-[11px] font-bold text-left border transition flex items-center justify-between ${
+                            active ? 'bg-rose-50 border-rose-400 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          <span className="truncate">{al.label}</span>
+                          <span>{active ? '✕' : ''}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-indigo-50 p-3 rounded-2xl flex justify-between items-center border border-indigo-100">
+                  <div>
+                    <div className="text-[11px] text-indigo-600 font-semibold">Норма от ИИ:</div>
+                    <div className="text-base font-extrabold text-indigo-950">{targets.kcal} ккал / день</div>
+                  </div>
+                  <div className="text-right text-xs text-indigo-700 font-bold">
+                    Б: {targets.p}г • Ж: {targets.f}г • У: {targets.c}г
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={completeOnboarding}
+              className="w-full mt-4 bg-emerald-400 active:bg-emerald-500 text-slate-950 py-3.5 rounded-2xl font-extrabold text-base shadow-lg"
+            >
+              🚀 Запустить и составить рацион
+            </button>
+          </div>
+        );
+      }
+
+      const selectedDayObj = calendarData[selectedDateKey] || null;
+      const activeFriend = friends.find(f => f.id === activeFriendId) || null;
+      const filteredFoods = FOODS.filter(f => {
+        const matchesSearch = f.name.toLowerCase().includes(foodSearch.toLowerCase());
+        return matchesSearch;
+      });
+
+      return (
+        <div className="max-w-md mx-auto min-h-screen pb-24">
+          {/* Верхняя шапка */}
+          <div className="bg-indigo-600 text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-10">
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <p className="text-xs text-indigo-200 font-medium flex items-center gap-1.5">
+                  <span>👤 {userName} ({weight} кг)</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    stats.todayColor === 'green' ? 'bg-emerald-400 text-slate-950' :
+                    stats.todayColor === 'yellow' ? 'bg-amber-400 text-slate-950' :
+                    stats.todayColor === 'red' ? 'bg-rose-500 text-white' :
+                    'bg-white/20 text-white'
+                  }`}>
+                    {stats.todayColor === 'green' ? '🟢 Выполнен' :
+                     stats.todayColor === 'yellow' ? '🟡 Попытка' :
+                     stats.todayColor === 'red' ? '🔴 Срыв' : '⏳ В процессе'}
+                  </span>
+                </p>
+                <h1 className="text-2xl font-extrabold mt-0.5">
+                  {Math.round(stats.completed.kcal)} / {targets.kcal} <span className="text-xs font-normal text-indigo-200">ккал</span>
+                </h1>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  onClick={() => handleGenerateAI(aiVariant)}
+                  className="bg-white/20 active:bg-white/30 text-[11px] px-2.5 py-1.5 rounded-xl font-bold backdrop-blur-sm"
+                >
+                  ✨ Сменить меню
+                </button>
+                <button
+                  onClick={() => setShowEveningQuiz(true)}
+                  className="bg-amber-400/90 text-slate-950 text-[11px] px-2.5 py-1 rounded-xl font-extrabold shadow-sm"
+                >
+                  🌙 Тест на завтра
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full bg-indigo-950/50 h-2.5 rounded-full overflow-hidden mb-3 relative">
+              <div
+                className="bg-indigo-300/35 h-full absolute left-0 top-0 transition-all duration-300"
+                style={{ width: `${Math.min(100, (stats.planned.kcal / targets.kcal) * 100)}%` }}
+              />
+              <div
+                className="bg-emerald-400 h-full relative transition-all duration-300"
+                style={{ width: `${Math.min(100, (stats.completed.kcal / targets.kcal) * 100)}%` }}
+              />
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
+              <div className="bg-white/10 p-1.5 rounded-xl">
+                <div className="text-indigo-200 text-[10px]">Белки</div>
+                <div className="font-bold">{Math.round(stats.completed.p)}/{targets.p}г</div>
+              </div>
+              <div className="bg-white/10 p-1.5 rounded-xl">
+                <div className="text-indigo-200 text-[10px]">Жиры</div>
+                <div className="font-bold">{Math.round(stats.completed.f)}/{targets.f}г</div>
+              </div>
+              <div className="bg-white/10 p-1.5 rounded-xl">
+                <div className="text-indigo-200 text-[10px]">Углеводы</div>
+                <div className="font-bold">{Math.round(stats.completed.c)}/{targets.c}г</div>
+              </div>
+              <button onClick={() => setTab('calendar')} className="bg-white/15 p-1.5 rounded-xl border border-white/20">
+                <div className="text-indigo-100 text-[10px]">Успехи</div>
+                <div className="font-extrabold text-[11px]">🟢{calendarTotals.green} 🟡{calendarTotals.yellow} 🔴{calendarTotals.red}</div>
+              </button>
+            </div>
+          </div>
+
+          {/* Вечернее напоминание в 21:50 */}
+          {eveningBanner && (
+            <div className="mx-4 mt-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white p-3.5 rounded-2xl shadow-md flex justify-between items-center">
+              <div className="text-xs">
+                <div className="font-extrabold">🕘 Вечерний опрос (21:50)!</div>
+                <div className="opacity-95">Выбери, чем хочешь попитаться завтра</div>
+              </div>
+              <button
+                onClick={() => setShowEveningQuiz(true)}
+                className="bg-white text-orange-600 px-3 py-2 rounded-xl text-xs font-extrabold shadow-sm"
+              >
+                Пройти тест
+              </button>
+            </div>
+          )}
+
+          {/* МОДАЛЬНОЕ ОКНО: ВЕЧЕРНИЙ ТЕСТ ЖЕЛАНИЙ НА ЗАВТРА (21:50) */}
+          {showEveningQuiz && (
+            <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+                      🌙 Вечерний ритуал • 21:50
+                    </span>
+                    <h2 className="text-lg font-extrabold text-slate-900 mt-1">
+                      Чем бы ты хотел попитаться завтра?
+                    </h2>
+                  </div>
+                  <button onClick={() => setShowEveningQuiz(false)} className="text-slate-400 font-bold text-sm">✕</button>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">1. Какой завтрак хочется утром?</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setQuizAnswers({...quizAnswers, breakfast: 'savory'})} className={`p-2.5 rounded-xl font-bold border ${quizAnswers.breakfast === 'savory' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-700'}`}>🍳 Сытный (яйца / тосты)</button>
+                      <button onClick={() => setQuizAnswers({...quizAnswers, breakfast: 'sweet'})} className={`p-2.5 rounded-xl font-bold border ${quizAnswers.breakfast === 'sweet' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-700'}`}>🥣 Сладкий (каша / сырники)</button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">2. Что поставить в основу обеда?</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button onClick={() => setQuizAnswers({...quizAnswers, lunchProtein: 'poultry'})} className={`p-2 rounded-xl font-bold border ${quizAnswers.lunchProtein === 'poultry' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🍗 Курица / Индейка</button>
+                      <button onClick={() => setQuizAnswers({...quizAnswers, lunchProtein: 'meat'})} className={`p-2 rounded-xl font-bold border ${quizAnswers.lunchProtein === 'meat' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🥩 Говядина / Мясо</button>
+                      <button onClick={() => setQuizAnswers({...quizAnswers, lunchProtein: 'fish'})} className={`p-2 rounded-xl font-bold border ${quizAnswers.lunchProtein === 'fish' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🐟 Рыба</button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">3. Любимый гарнир на завтра:</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button onClick={() => setQuizAnswers({...quizAnswers, lunchSide: 'potato'})} className={`p-2 rounded-xl font-bold border ${quizAnswers.lunchSide === 'potato' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🥔 Картошка (тушеная/пюре)</button>
+                      <button onClick={() => setQuizAnswers({...quizAnswers, lunchSide: 'buckwheat'})} className={`p-2 rounded-xl font-bold border ${quizAnswers.lunchSide === 'buckwheat' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🌾 Гречка</button>
+                      <button onClick={() => setQuizAnswers({...quizAnswers, lunchSide: 'rice'})} className={`p-2 rounded-xl font-bold border ${quizAnswers.lunchSide === 'rice' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🍚 Рис / Плов</button>
+                      <button onClick={() => setQuizAnswers({...quizAnswers, lunchSide: 'pasta'})} className={`p-2 rounded-xl font-bold border ${quizAnswers.lunchSide === 'pasta' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🍝 Макароны / Булгур</button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">4. Настроение на ужин:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setQuizAnswers({...quizAnswers, dinner: 'home'})} className={`p-2.5 rounded-xl font-bold border ${quizAnswers.dinner === 'home' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🍲 Домашний уютный</button>
+                      <button onClick={() => setQuizAnswers({...quizAnswers, dinner: 'light'})} className={`p-2.5 rounded-xl font-bold border ${quizAnswers.dinner === 'light' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-700'}`}>🥗 Легкий белковый</button>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={applyEveningQuiz}
+                  className="w-full bg-emerald-500 text-white py-3.5 rounded-2xl font-extrabold text-sm shadow-md"
+                >
+                  ✨ Собрать рацион по моим ответам!
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* МОДАЛЬНОЕ ОКНО: ПОДРОБНЫЙ ПРОСМОТР ПИТАНИЯ ДРУГА ПО ДНЯМ И КОММЕНТАРИИ */}
+          {activeFriend && (
+            <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                      👤 {activeFriend.name}
+                      <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded-lg">⚖️ {activeFriend.weight} кг</span>
+                    </h2>
+                    <p className="text-xs text-slate-400">Подробный дневник питания по дням</p>
+                  </div>
+                  <button onClick={() => { setActiveFriendId(null); setConfirmDeleteFriendId(null); }} className="bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600">
+                    Закрыть
+                  </button>
+                </div>
+
+                {/* Выбор даты друга */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1.5">📅 Выбери день друга:</label>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {Object.keys(activeFriend.daysHistory || {}).sort().reverse().map(dateKey => {
+                      const dObj = activeFriend.daysHistory[dateKey];
+                      const badge = dObj.status === 'green' ? '🟢' : dObj.status === 'yellow' ? '🟡' : dObj.status === 'red' ? '🔴' : '⚪';
+                      return (
+                        <button
+                          key={dateKey}
+                          onClick={() => setFriendSelectedDate(dateKey)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold border whitespace-nowrap ${
+                            friendSelectedDate === dateKey ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {badge} {dateKey === TODAY_KEY ? 'Сегодня' : dateKey}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Подробный рацион друга за выбранный день */}
+                {(() => {
+                  const fDay = activeFriend.daysHistory?.[friendSelectedDate] || {
+                    eatenKcal: activeFriend.eatenKcal,
+                    targetKcal: activeFriend.targetKcal,
+                    meals: activeFriend.meals,
+                    items: [],
+                    comments: []
+                  };
+                  return (
+                    <div className="space-y-3">
+                      <div className="bg-slate-50 p-3 rounded-2xl flex justify-between items-center text-xs">
+                        <span className="font-semibold text-slate-600">Калории за {friendSelectedDate}:</span>
+                        <span className="font-extrabold text-slate-900">{fDay.eatenKcal} / {fDay.targetKcal} ккал</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold text-slate-700">🍽️ Что было в меню у {activeFriend.name}:</h4>
+                        {(!fDay.items || fDay.items.length === 0) ? (
+                          <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-xl">
+                            Детальный список блюд появится при следующем обновлении кода от друга.
+                          </p>
+                        ) : (
+                          fDay.items.map((it, idx) => {
+                            const mealMeta = MEALS.find(m => m.id === it.meal) || { icon: '🍽️', title: 'Прием' };
+                            const mStat = fDay.meals?.[it.meal];
+                            return (
+                              <div key={idx} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl text-xs border border-slate-100">
+                                <div>
+                                  <span className="text-[10px] font-bold text-indigo-600 uppercase">{mealMeta.icon} {mealMeta.title} {mStat === 'done' ? '✅' : mStat === 'missed' ? '❌' : ''}</span>
+                                  <div className="font-bold text-slate-800">{it.name} ({it.grams} г)</div>
+                                </div>
+                                <div className="font-extrabold text-slate-700">{it.kcal} ккал</div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Комментарии к этому дню друга */}
+                      <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100 space-y-2.5">
+                        <h4 className="text-xs font-extrabold text-indigo-950">💬 Комментарии к этому дню ({fDay.comments?.length || 0})</h4>
+                        {(!fDay.comments || fDay.comments.length === 0) ? (
+                          <p className="text-[11px] text-slate-400">Пока нет комментариев. Поддержи друга!</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {fDay.comments.map((c, idx) => (
+                              <div key={idx} className="bg-white p-2.5 rounded-xl text-xs shadow-sm">
+                                <div className="flex justify-between text-[10px] text-slate-400 font-bold">
+                                  <span className="text-indigo-600">{c.author}</span>
+                                  <span>{c.time}</span>
+                                </div>
+                                <div className="text-slate-800 mt-0.5 font-medium">{c.text}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 pt-1">
+                          <input
+                            type="text"
+                            value={friendCommentInput}
+                            onChange={e => setFriendCommentInput(e.target.value)}
+                            placeholder={`Написать комментарий для ${activeFriend.name}...`}
+                            className="flex-1 p-2 bg-white border border-indigo-200 rounded-xl text-xs outline-none"
+                          />
+                          <button
+                            onClick={() => addCommentToFriendDay(activeFriend.id, friendSelectedDate)}
+                            className="bg-indigo-600 text-white px-3 rounded-xl font-bold text-xs"
+                          >
+                            Отпр.
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Безопасное удаление друга только внутри меню с подтверждением */}
+                      <div className="pt-3 border-t border-slate-100 flex justify-end">
+                        {confirmDeleteFriendId !== activeFriend.id ? (
+                          <button
+                            onClick={() => setConfirmDeleteFriendId(activeFriend.id)}
+                            className="text-[11px] text-slate-400 underline"
+                          >
+                            Управление профилем друга
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2 bg-rose-50 p-2 rounded-xl w-full justify-between">
+                            <span className="text-xs font-bold text-rose-800">Точно удалить из друзей?</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setFriends(friends.filter(f => f.id !== activeFriend.id));
+                                  setActiveFriendId(null);
+                                  setConfirmDeleteFriendId(null);
+                                }}
+                                className="bg-rose-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold"
+                              >
+                                Да, удалить
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteFriendId(null)}
+                                className="bg-white text-slate-600 px-2.5 py-1 rounded-lg text-xs font-bold border"
+                              >
+                                Отмена
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          <div className="p-4 space-y-4">
+            {/* ================= ВКЛАДКА 1: ДНЕВНИК ================= */}
+            {tab === 'diary' && (
+              <div className="space-y-4">
+                <div className="bg-indigo-50 border border-indigo-100 p-3.5 rounded-2xl flex items-start gap-3">
+                  <div className="text-xl">🤖</div>
+                  <div className="text-xs text-indigo-950 leading-relaxed flex-1">
+                    <span className="font-bold">Локальный ИИ: </span>
+                    {aiNote}
+                  </div>
+                </div>
+
+                {MEALS.map(meal => {
+                  const items = log.filter(i => i.meal === meal.id);
+                  const status = mealStatus[meal.id];
+                  const mealKcal = items.reduce((sum, i) => {
+                    const f = FOODS.find(food => food.id === Number(i.foodId));
+                    return sum + (f ? (f.kcal * i.grams) / 100 : 0);
+                  }, 0);
+
+                  return (
+                    <div
+                      key={meal.id}
+                      className={`bg-white p-4 rounded-2xl shadow-sm border-2 transition ${
+                        status === 'done' ? 'border-emerald-400 bg-emerald-50/20' :
+                        status === 'missed' ? 'border-rose-300 bg-rose-50/20 opacity-85' : 'border-transparent'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-1.5 text-base">
+                          <span>{meal.icon}</span> {meal.title}
+                          <span className="text-xs font-normal text-slate-400 ml-1">({Math.round(mealKcal)} ккал)</span>
+                        </h3>
+
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => toggleMealStatus(meal.id, 'done')}
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                              status === 'done' ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            ✅ {status === 'done' ? 'Соблюдено' : 'Выполнить'}
+                          </button>
+                          <button
+                            onClick={() => toggleMealStatus(meal.id, 'missed')}
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                              status === 'missed' ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            {status === 'missed' ? '❌ Срыв' : '❌'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {items.length === 0 ? (
+                        <p className="text-xs text-slate-400">Пусто</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {items.map(item => {
+                            const food = FOODS.find(f => f.id === Number(item.foodId));
+                            if (!food) return null;
+                            const k = item.grams / 100;
+                            const hasAllergen = !isSafeFood(food, allergens);
+                            return (
+                              <div key={item.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl text-xs">
+                                <div>
+                                  <div className="font-semibold text-slate-800">
+                                    {food.name} <span className="text-indigo-600 font-bold">({item.grams} г)</span>
+                                    {hasAllergen && <span className="ml-1 text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold">⚠️ Аллерген</span>}
+                                  </div>
+                                  <div className="text-slate-500 mt-0.5">
+                                    {Math.round(food.kcal * k)} ккал • Б: {(food.p * k).toFixed(1)} • Ж: {(food.f * k).toFixed(1)} • У: {(food.c * k).toFixed(1)}
+                                  </div>
+                                </div>
+                                <button onClick={() => removeItem(item.id)} className="text-slate-400 active:text-rose-500 font-bold px-2 py-1 text-sm">✕</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {!showAddModal ? (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="w-full py-3.5 bg-white border-2 border-dashed border-slate-300 rounded-2xl text-slate-600 font-bold text-sm"
+                  >
+                    + Выбрать блюдо из расширенной базы ({FOODS.length} блюд)
+                  </button>
+                ) : (
+                  <div className="bg-white p-4 rounded-2xl shadow-md border border-slate-200 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-sm">Добавить блюдо ({FOODS.length} в базе)</h3>
+                      <button onClick={() => setShowAddModal(false)} className="text-xs text-slate-400">Закрыть ✕</button>
+                    </div>
+                    <input
+                      type="text"
+                      value={foodSearch}
+                      onChange={e => setFoodSearch(e.target.value)}
+                      placeholder="🔍 Поиск блюда (например: гуляш, плов, творог)..."
+                      className="w-full p-2.5 bg-slate-50 border rounded-xl text-xs outline-none"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={selectedMeal} onChange={e => setSelectedMeal(e.target.value)} className="p-2.5 bg-slate-50 border rounded-xl text-sm">
+                        {MEALS.map(m => <option key={m.id} value={m.id}>{m.icon} {m.title}</option>)}
+                      </select>
+                      <div className="flex items-center bg-slate-50 border rounded-xl px-3">
+                        <input type="number" value={grams} onChange={e => setGrams(e.target.value)} className="w-full bg-transparent text-sm font-semibold outline-none" placeholder="Граммы" />
+                        <span className="text-xs text-slate-400">г</span>
+                      </div>
+                    </div>
+                    <select value={selectedFood} onChange={e => setSelectedFood(e.target.value)} className="w-full p-2.5 bg-slate-50 border rounded-xl text-xs font-medium">
+                      {filteredFoods.map(f => {
+                        const warn = !isSafeFood(f, allergens) ? ' ⚠️ (Аллерген)' : '';
+                        return (
+                          <option key={f.id} value={f.id}>{f.name} — {f.kcal} ккал{warn}</option>
+                        );
+                      })}
+                    </select>
+                    <button onClick={addFoodToLog} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm">
+                      Добавить в рацион
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ================= ВКЛАДКА 2: КАЛЕНДАРЬ И КОММЕНТАРИИ ДНЕЙ ================= */}
+            {tab === 'calendar' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-2.5 text-center">
+                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl">
+                    <div className="text-xl font-extrabold text-emerald-600">{calendarTotals.green}</div>
+                    <div className="text-[11px] font-bold text-emerald-800 mt-0.5">🟢 Выполнено</div>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl">
+                    <div className="text-xl font-extrabold text-amber-600">{calendarTotals.yellow}</div>
+                    <div className="text-[11px] font-bold text-amber-800 mt-0.5">🟡 Попытка</div>
+                  </div>
+                  <div className="bg-rose-50 border border-rose-200 p-3 rounded-2xl">
+                    <div className="text-xl font-extrabold text-rose-600">{calendarTotals.red}</div>
+                    <div className="text-[11px] font-bold text-rose-800 mt-0.5">🔴 Срыв</div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+                  <div className="flex justify-between items-center mb-4">
+                    <button onClick={() => changeMonth(-1)} className="px-3 py-1.5 bg-slate-100 rounded-xl font-bold text-sm">◀</button>
+                    <div className="font-extrabold text-base text-slate-800">
+                      {MONTH_NAMES[calMonth]} {calYear}
+                    </div>
+                    <button onClick={() => changeMonth(1)} className="px-3 py-1.5 bg-slate-100 rounded-xl font-bold text-sm">▶</button>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold text-slate-400 mb-2">
+                    <div>ПН</div><div>ВТ</div><div>СР</div><div>ЧТ</div><div>ПТ</div><div>СБ</div><div>ВС</div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {calendarGrid.map((cell, idx) => {
+                      if (!cell) return <div key={`empty-${idx}`} className="h-11" />;
+                      const st = cell.data?.status || 'none';
+                      const hasComments = (cell.data?.comments?.length || 0) > 0;
+                      const isToday = cell.key === TODAY_KEY;
+                      const isSelected = cell.key === selectedDateKey;
+
+                      let bgClass = 'bg-slate-50 text-slate-700 border-slate-100';
+                      if (st === 'green') bgClass = 'bg-emerald-500 text-white border-emerald-600 font-extrabold shadow-sm';
+                      else if (st === 'yellow') bgClass = 'bg-amber-400 text-slate-950 border-amber-500 font-extrabold shadow-sm';
+                      else if (st === 'red') bgClass = 'bg-rose-500 text-white border-rose-600 font-extrabold shadow-sm';
+
+                      return (
+                        <button
+                          key={cell.key}
+                          onClick={() => setSelectedDateKey(cell.key)}
+                          className={`h-11 rounded-2xl border flex flex-col items-center justify-center relative transition ${bgClass} ${
+                            isSelected ? 'ring-2 ring-indigo-600 ring-offset-2' : ''
+                          }`}
+                        >
+                          <span className="text-xs">{cell.day}</span>
+                          {hasComments && <span className="text-[8px] leading-none">💬</span>}
+                          {isToday && !hasComments && <span className="text-[8px] uppercase leading-none">сег</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Детали выбранного дня + комментарии друзей */}
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="text-xs text-slate-400 font-medium">Выбранный день</div>
+                      <h3 className="font-extrabold text-slate-800 text-base">
+                        {selectedDateKey === TODAY_KEY ? `${selectedDateKey} (Сегодня)` : selectedDateKey}
+                      </h3>
+                    </div>
+                    {selectedDayObj && (
+                      <div className="text-right text-xs">
+                        <div className="font-bold text-slate-700">{selectedDayObj.eatenKcal || 0} / {selectedDayObj.targetKcal || targets.kcal} ккал</div>
+                        <div className="text-slate-400">Приемов: {selectedDayObj.doneMeals || 0} из 4 ✅</div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <button onClick={() => setDayManualColor(selectedDateKey, 'green')} className={`py-2 rounded-xl text-xs font-bold border ${selectedDayObj?.status === 'green' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-800'}`}>🟢 Выполнен</button>
+                    <button onClick={() => setDayManualColor(selectedDateKey, 'yellow')} className={`py-2 rounded-xl text-xs font-bold border ${selectedDayObj?.status === 'yellow' ? 'bg-amber-400 text-slate-950' : 'bg-amber-50 text-amber-800'}`}>🟡 Попытка</button>
+                    <button onClick={() => setDayManualColor(selectedDateKey, 'red')} className={`py-2 rounded-xl text-xs font-bold border ${selectedDayObj?.status === 'red' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-800'}`}>🔴 Срыв</button>
+                  </div>
+
+                  {/* Комментарии к этому дню */}
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <div className="text-xs font-bold text-slate-700">💬 Комментарии к дню ({selectedDayObj?.comments?.length || 0})</div>
+                    {(selectedDayObj?.comments || []).map((c, i) => (
+                      <div key={i} className="bg-slate-50 p-2.5 rounded-xl text-xs">
+                        <div className="flex justify-between text-[10px] font-bold text-indigo-600">
+                          <span>{c.author}</span>
+                          <span className="text-slate-400">{c.time}</span>
+                        </div>
+                        <div className="text-slate-800 mt-0.5">{c.text}</div>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={myDayCommentText}
+                        onChange={e => setMyDayCommentText(e.target.value)}
+                        placeholder="Оставить заметку или комментарий к дню..."
+                        className="flex-1 p-2 bg-slate-50 border rounded-xl text-xs outline-none"
+                      />
+                      <button onClick={() => addCommentToMyDay(selectedDateKey)} className="bg-indigo-600 text-white px-3 rounded-xl font-bold text-xs">+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ================= ВКЛАДКА 3: ДРУЗЬЯ (БЕЗ КРЕСТИКА, МОНОШИРИННЫЙ КОД, ПОДРОБНЫЙ ДНЕВНИК) ================= */}
+            {tab === 'friends' && (
+              <div className="space-y-4">
+                {/* Код дружбы моноширинным шрифтом */}
+                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 text-white p-4 rounded-2xl shadow-md space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h2 className="font-bold text-base">📤 Твой код дружбы</h2>
+                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">Моноширинный формат</span>
+                  </div>
+                  <p className="text-xs text-indigo-100 leading-relaxed">
+                    Нажми на код ниже (он выделится целиком) или используй кнопки копирования:
+                  </p>
+
+                  {/* Поле с моноширинным кодом для удобного копирования с телефона */}
+                  <div className="bg-slate-950/80 border border-indigo-400/40 p-3 rounded-xl">
+                    <input
+                      type="text"
+                      readOnly
+                      value={myShareCode}
+                      onClick={e => { e.target.select(); copyToClipboardAndroid(myShareCode, '✅ Моноширинный код скопирован!'); }}
+                      className="selectable-code w-full bg-transparent text-emerald-300 font-mono text-xs tracking-wider outline-none overflow-x-auto"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => copyToClipboardAndroid(myShareCode, '✅ Чистый код скопирован!')}
+                      className="bg-emerald-400 text-slate-950 py-2.5 rounded-xl font-extrabold text-xs shadow-sm"
+                    >
+                      🔑 Скопировать только код
+                    </button>
+                    <button
+                      onClick={copyFullShareReport}
+                      className="bg-white text-indigo-700 py-2.5 rounded-xl font-extrabold text-xs shadow-sm"
+                    >
+                      📋 Отчет + код
+                    </button>
+                  </div>
+                  {copyFeedback && <div className="text-center text-xs font-bold text-amber-300">{copyFeedback}</div>}
+                </div>
+
+                {/* Поле добавления друга */}
+                <div className="bg-white p-4 rounded-2xl shadow-sm space-y-2.5">
+                  <h2 className="font-bold text-slate-800 text-sm">➕ Добавить или обновить друга по коду</h2>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={friendCodeInput}
+                      onChange={e => setFriendCodeInput(e.target.value)}
+                      placeholder="Вставь моноширинный код друга..."
+                      className="flex-1 p-2.5 bg-slate-50 border rounded-xl font-mono text-xs outline-none"
+                    />
+                    <button onClick={addFriendByCode} className="bg-indigo-600 text-white px-4 rounded-xl font-bold text-xs">
+                      Загрузить
+                    </button>
+                  </div>
+                </div>
+
+                {/* Карточки друзей (БЕЗ КРЕСТИКА УДАЛЕНИЯ, с кнопкой подробного просмотра по дням) */}
+                <div className="space-y-3">
+                  <h3 className="font-bold text-slate-700 text-sm px-1">👥 Мои друзья ({friends.length})</h3>
+                  {friends.map(friend => {
+                    const pct = Math.min(100, Math.round((friend.eatenKcal / friend.targetKcal) * 100));
+                    const cs = friend.calSummary || { green: 0, yellow: 0, red: 0 };
+                    const todayCommentsCount = friend.daysHistory?.[TODAY_KEY]?.comments?.length || 0;
+
+                    return (
+                      <div key={friend.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="font-extrabold text-slate-800 text-base flex items-center gap-2">
+                              {friend.name}
+                              <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded-lg font-bold">⚖️ {friend.weight} кг</span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              Обновлено: {friend.updatedAt} • Календарь: 🟢{cs.green} 🟡{cs.yellow} 🔴{cs.red}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => { setActiveFriendId(friend.id); setFriendSelectedDate(TODAY_KEY); }}
+                            className="bg-indigo-50 active:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-xl text-xs font-extrabold"
+                          >
+                            📖 Рацион по дням
+                          </button>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-500">Выполнение сегодня:</span>
+                            <span className="font-bold text-slate-800">{friend.eatenKcal} / {friend.targetKcal} ккал ({pct}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div className="bg-emerald-500 h-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 text-center text-[11px]">
+                          {MEALS.map(m => {
+                            const st = friend.meals?.[m.id] || 'pending';
+                            return (
+                              <div key={m.id} className={`p-1.5 rounded-xl font-medium ${
+                                st === 'done' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                st === 'missed' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                'bg-slate-50 text-slate-400'
+                              }`}>
+                                <div>{m.icon} {st === 'done' ? '✅' : st === 'missed' ? '❌' : '⏳'}</div>
+                                <div className="truncate mt-0.5">{m.title}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <button
+                          onClick={() => { setActiveFriendId(friend.id); setFriendSelectedDate(TODAY_KEY); }}
+                          className="w-full py-2 bg-slate-50 rounded-xl text-xs font-bold text-slate-600 flex items-center justify-center gap-1.5 border border-slate-100"
+                        >
+                          💬 Комментарии к дню ({todayCommentsCount}) и список блюд ➔
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ================= ВКЛАДКА 4: ПРОФИЛЬ, АЛЛЕРГЕНЫ И УВЕДОМЛЕНИЕ В 21:50 ================= */}
+            {tab === 'settings' && (
+              <div className="space-y-4">
+                <div className="bg-white p-4 rounded-2xl shadow-sm space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="font-bold text-slate-800">⚙️ Параметры профиля</h2>
+                    <button onClick={() => setOnboarded(false)} className="text-xs text-indigo-600 font-semibold">
+                      Открыть стартовую анкету
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs text-slate-500">Возраст</label>
+                      <input type="number" value={age} onChange={e => setAge(Number(e.target.value))} className="w-full mt-1 p-2 bg-slate-50 border rounded-xl font-semibold text-center" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500">Вес (кг)</label>
+                      <input type="number" value={weight} onChange={e => setWeight(Number(e.target.value))} className="w-full mt-1 p-2 bg-slate-50 border rounded-xl font-semibold text-center" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500">Рост (см)</label>
+                      <input type="number" value={height} onChange={e => setHeight(Number(e.target.value))} className="w-full mt-1 p-2 bg-slate-50 border rounded-xl font-semibold text-center" />
+                    </div>
+                  </div>
+
+                  {/* Настройка вечернего уведомления в 21:50 */}
+                  <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-bold text-xs text-amber-950">🔔 Вечерний тест рациона в 21:50</div>
+                        <div className="text-[11px] text-amber-800">Ежедневное напоминание выбрать блюда на завтра</div>
+                      </div>
+                      <button
+                        onClick={() => setNotifEnabled(!notifEnabled)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold ${notifEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}
+                      >
+                        {notifEnabled ? 'ВКЛ' : 'ВЫКЛ'}
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setShowEveningQuiz(true)}
+                      className="w-full bg-white text-amber-900 border border-amber-300 py-2 rounded-xl text-xs font-bold"
+                    >
+                      🌙 Пройти тест желаний на завтра прямо сейчас
+                    </button>
+                  </div>
+
+                  {/* Управление аллергенами */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-2">
+                      🚫 Мои аллергены и исключения ({allergens.length} выбрано):
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {ALLERGENS.map(al => {
+                        const active = allergens.includes(al.id);
+                        return (
+                          <button
+                            key={al.id}
+                            onClick={() => toggleAllergen(al.id)}
+                            className={`p-2 rounded-xl text-xs font-bold text-left border transition flex items-center justify-between ${
+                              active ? 'bg-rose-50 border-rose-400 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            <span className="truncate">{al.label}</span>
+                            <span>{active ? '✕' : ''}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => { handleGenerateAI(aiVariant); setTab('diary'); }}
+                    className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm"
+                  >
+                    ✨ Пересобрать рацион без аллергенов
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Нижнее меню */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 max-w-md mx-auto z-20">
+            <button onClick={() => setTab('diary')} className={`flex-1 py-2 rounded-xl font-bold text-[11px] ${tab === 'diary' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500'}`}>
+              🍽️ Рацион ({stats.doneMealsCount}/4)
+            </button>
+            <button onClick={() => setTab('calendar')} className={`flex-1 py-2 rounded-xl font-bold text-[11px] ${tab === 'calendar' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500'}`}>
+              📅 Календарь
+            </button>
+            <button onClick={() => setTab('friends')} className={`flex-1 py-2 rounded-xl font-bold text-[11px] ${tab === 'friends' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500'}`}>
+              👥 Друзья ({friends.length})
+            </button>
+            <button onClick={() => setTab('settings')} className={`flex-1 py-2 rounded-xl font-bold text-[11px] ${tab === 'settings' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500'}`}>
+              ⚙️ Профиль
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>
